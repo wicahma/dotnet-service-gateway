@@ -7,11 +7,14 @@ namespace K8sGateway.Host.Middleware;
 
 // Global exception handler that returns RFC 7807 Problem Details.
 // Ensures the proxy never crashes and always returns meaningful error responses.
-public sealed class GlobalExceptionHandlerMiddleware
+public sealed class GlobalExceptionHandlerMiddleware(
+    RequestDelegate next,
+    ILogger<GlobalExceptionHandlerMiddleware> logger,
+    IHostEnvironment environment)
 {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<GlobalExceptionHandlerMiddleware> _logger;
-    private readonly IHostEnvironment _environment;
+    private readonly RequestDelegate _next = next;
+    private readonly ILogger<GlobalExceptionHandlerMiddleware> _logger = logger;
+    private readonly IHostEnvironment _environment = environment;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -19,22 +22,11 @@ public sealed class GlobalExceptionHandlerMiddleware
         WriteIndented = false
     };
 
-    public GlobalExceptionHandlerMiddleware(
-        RequestDelegate next,
-        ILogger<GlobalExceptionHandlerMiddleware> logger,
-        IHostEnvironment environment)
-    {
-        _next = next;
-        _logger = logger;
-        _environment = environment;
-    }
-
     public async Task InvokeAsync(HttpContext context)
     {
         try
         {
             await _next(context);
-
             if (context.Response.StatusCode >= 500 && !context.Response.HasStarted)
             {
                 var correlationId = context.Items[HeaderNames.CorrelationId]?.ToString();
@@ -54,7 +46,7 @@ public sealed class GlobalExceptionHandlerMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        var correlationId = context.Items[HeaderNames.CorrelationId]?.ToString() ?? "unknown";
+        string? correlationId = context.Items[HeaderNames.CorrelationId]?.ToString() ?? "unknown";
 
         _logger.LogError(
             exception,
@@ -73,7 +65,7 @@ public sealed class GlobalExceptionHandlerMiddleware
         context.Response.StatusCode = (int)HttpStatusCode.BadGateway;
         context.Response.ContentType = "application/problem+json";
 
-        var problemDetails = new ProblemDetails
+        ProblemDetails? problemDetails = new()
         {
             Status = (int)HttpStatusCode.BadGateway,
             Title = "Gateway Error",

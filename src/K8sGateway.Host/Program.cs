@@ -115,13 +115,8 @@ try
 
     WebApplication? app = builder.Build();
 
-    // 8.1: Global Exception Handler (must be first to catch everything)
     app.UseGlobalExceptionHandler();
-
-    // 8.2: Correlation ID (early for logging context)
     app.UseCorrelationId();
-
-    // 8.3: Serilog Request Logging
     app.UseSerilogRequestLogging(options =>
     {
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
@@ -147,15 +142,13 @@ try
     app.UseRateLimiter();
     app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
-        Predicate = _ => false // Just return 200 OK
+        Predicate = _ => false
     });
 
     app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
-        Predicate = _ => true // Run all health checks
+        Predicate = _ => true
     });
-
-    // 8.8: YARP Reverse Proxy (Terminal Middleware - must be last)
     app.MapReverseProxy();
 
     Log.Information("K8s Gateway is ready to accept connections");
