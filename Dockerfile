@@ -21,8 +21,7 @@ RUN useradd -m -u 1001 dotnetuser && \
     chown -R dotnetuser:dotnetuser /app
 
 USER dotnetuser
-EXPOSE 80 443
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["curl", "-f", "http://localhost:80/health/live"]
+EXPOSE 3000
 
+ENV ASPNETCORE_URLS=http://+:3000
 ENTRYPOINT ["dotnet", "K8sGateway.Host.dll"]
