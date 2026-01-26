@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 WORKDIR /src
 
 COPY K8sGateway.sln .
@@ -12,7 +12,7 @@ COPY src/ src/
 RUN dotnet build K8sGateway.sln -c Release --no-restore
 RUN dotnet publish src/K8sGateway.Host/K8sGateway.Host.csproj -c Release --no-build -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled
 WORKDIR /app
 
 COPY --from=builder /app/publish .
@@ -21,7 +21,7 @@ RUN useradd -m -u 1001 dotnetuser && \
     chown -R dotnetuser:dotnetuser /app
 
 USER dotnetuser
-EXPOSE 3000
+EXPOSE 8080
 
-ENV ASPNETCORE_URLS=http://+:3000
+ENV ASPNETCORE_URLS=http://+:8080
 ENTRYPOINT ["dotnet", "K8sGateway.Host.dll"]
