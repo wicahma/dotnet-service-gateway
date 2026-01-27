@@ -17,7 +17,7 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     
     <!-- Container Configuration -->
-    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled</ContainerBaseImage>
+    <ContainerBaseImage>registry.acc.co.id/devops/dotnet/aspnet:10.0-alpine</ContainerBaseImage>
     <ContainerRepository>k8sgateway</ContainerRepository>
   </PropertyGroup>
 
