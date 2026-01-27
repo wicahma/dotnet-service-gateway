@@ -1,27 +1,13 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
-WORKDIR /src
+FROM registry.acc.co.id/devops/dotnet/aspnet:10.0-alpine
 
-COPY K8sGateway.sln .
-COPY src/K8sGateway.Core/K8sGateway.Core.csproj src/K8sGateway.Core/
-COPY src/K8sGateway.Infrastructure/K8sGateway.Infrastructure.csproj src/K8sGateway.Infrastructure/
-COPY src/K8sGateway.Host/K8sGateway.Host.csproj src/K8sGateway.Host/
+ENV ASPNETCORE_URLS=http://*:5142
+RUN tzutil /s "SE Asia Standard Time"
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+ARG SERVICE
+WORKDIR C:\app\publish
+COPY ${SERVICE} .
 
-RUN dotnet restore K8sGateway.sln
-COPY src/ src/
-
-RUN dotnet build K8sGateway.sln -c Release --no-restore
-RUN dotnet publish src/K8sGateway.Host/K8sGateway.Host.csproj -c Release --no-build -o /app/publish
-
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled
-WORKDIR /app
-
-COPY --from=builder /app/publish .
-
-RUN useradd -m -u 1001 dotnetuser && \
-    chown -R dotnetuser:dotnetuser /app
-
-USER dotnetuser
-EXPOSE 8080
-
-ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 5142
+USER ContainerUser
 ENTRYPOINT ["dotnet", "K8sGateway.Host.dll"]
+
