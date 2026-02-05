@@ -2,19 +2,14 @@ using K8sGateway.Core.Constants;
 
 namespace K8sGateway.Host.Middleware;
 
-// Middleware that ensures correlation IDs are present on all requests.
-// Generates a new correlation ID if one is not provided.
 public sealed class CorrelationIdMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly ILogger<CorrelationIdMiddleware> _logger;
 
     public CorrelationIdMiddleware(
-        RequestDelegate next,
-        ILogger<CorrelationIdMiddleware> logger)
+        RequestDelegate next)
     {
         _next = next;
-        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -40,7 +35,6 @@ public sealed class CorrelationIdMiddleware
     }
 }
 
-// Extension methods for CorrelationIdMiddleware.
 public static class CorrelationIdMiddlewareExtensions
 {
     public static IApplicationBuilder UseCorrelationId(this IApplicationBuilder builder)

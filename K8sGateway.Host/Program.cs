@@ -9,11 +9,8 @@ Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .Enrich.WithEnvironmentName()
-    .Enrich.WithMachineName()
-    .Enrich.WithThreadId()
     .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}")
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateBootstrapLogger();
 
 try
@@ -22,25 +19,28 @@ try
 
     WebApplicationBuilder? builder = WebApplication.CreateBuilder(args);
 
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .Enrich.WithEnvironmentName()
-        .Enrich.WithMachineName()
-        .Enrich.WithThreadId());
+    Log.Information("Configuring Serilog");
+    builder.Host.UseSerilog((context, services, configuration) =>
+    {
+        configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .Enrich.FromLogContext()
+            .WriteTo.Console();
+    });
 
+    Log.Information("Adding Infrastructure services");
     builder.Services.AddInfrastructure();
 
+    Log.Information("Configuring Reverse Proxy");
     builder.Services
         .AddReverseProxy()
         .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
+    Log.Information("Configuring Rate Limiter");
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-        // Global rate limit using Token Bucket algorithm
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             RateLimitPartition.GetTokenBucketLimiter(
                 partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
@@ -54,7 +54,6 @@ try
                     AutoReplenishment = true
                 }));
 
-        // Custom response for rate limited requests
         options.OnRejected = async (context, cancellationToken) =>
         {
             string? correlationId = context.HttpContext.Items[HeaderNames.CorrelationId]?.ToString() ?? "unknown";
@@ -87,8 +86,10 @@ try
         };
     });
 
+    Log.Information("Adding Health Checks");
     builder.Services.AddHealthChecks();
 
+    Log.Information("Configuring Kestrel");
     builder.WebHost.ConfigureKestrel(serverOptions =>
     {
         // Remove connection limits - let K8s handle resource limits
@@ -106,32 +107,20 @@ try
         serverOptions.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
         serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(30);
 
-        // Enable HTTP/2 and HTTP/3 (QUIC)
+        // Enable HTTP/2 (HTTP/3 can cause issues on some platforms)
         serverOptions.ConfigureEndpointDefaults(listenOptions =>
         {
-            listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2AndHttp3;
+            listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
         });
     });
 
+    Log.Information("Building application");
     WebApplication? app = builder.Build();
 
+    Log.Information("Configuring middleware pipeline");
     app.UseGlobalExceptionHandler();
     app.UseCorrelationId();
-    app.UseSerilogRequestLogging(options =>
-    {
-        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
-        {
-            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value ?? "unknown");
-            diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme ?? "unknown");
-            diagnosticContext.Set("RemoteIpAddress", httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-            diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString() ?? "unknown");
-
-            if (httpContext.Items.TryGetValue(HeaderNames.CorrelationId, out var correlationId))
-            {
-                diagnosticContext.Set("CorrelationId", correlationId ?? "unknown");
-            }
-        };
-    });
+    app.UseRequestResponseLogging();
 
     if (!app.Environment.IsDevelopment())
     {
@@ -151,15 +140,17 @@ try
     });
     app.MapReverseProxy();
 
+    Log.Information("Starting web server");
+    await app.StartAsync();
     Log.Information("K8s Gateway is ready to accept connections");
-    await app.RunAsync();
+    await app.WaitForShutdownAsync();
 }
 catch (Exception ex)
 {
     Log.Fatal(ex, "K8s Gateway terminated unexpectedly");
-    throw;
+    return;
 }
 finally
 {
-    Log.CloseAndFlush();
+    await Log.CloseAndFlushAsync();
 }
